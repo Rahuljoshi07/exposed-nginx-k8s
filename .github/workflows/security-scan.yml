@@ -1,0 +1,65 @@
+name: Security Vulnerability Scan
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  schedule:
+    - cron: '0 2 * * 1'  # Weekly on Mondays at 2 AM
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  security-scan:
+    name: Security Vulnerability Scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Run Trivy vulnerability scanner in repo mode
+      uses: aquasecurity/trivy-action@master
+      with:
+        scan-type: 'fs'
+        scan-ref: '.'
+        format: 'sarif'
+        output: 'trivy-results.sarif'
+        severity: 'CRITICAL,HIGH,MEDIUM'
+        exit-code: '0'  # Don't fail the build
+
+    - name: Upload Trivy scan results to GitHub Security tab
+      uses: github/codeql-action/upload-sarif@v3
+      if: always()
+      with:
+        sarif_file: 'trivy-results.sarif'
+
+    - name: Run npm audit (if package.json exists)
+      if: hashFiles('package.json') != ''
+      run: |
+        if [ -f "package.json" ]; then
+          npm audit --audit-level=moderate || true
+          echo "✅ NPM audit completed"
+        fi
+
+    - name: Run pip safety check (if requirements.txt exists)
+      if: hashFiles('requirements.txt') != ''
+      run: |
+        if [ -f "requirements.txt" ]; then
+          pip install safety
+          safety check --file requirements.txt || true
+          echo "✅ Python safety check completed"
+        fi
+
+    - name: Security scan summary
+      run: |
+        echo "🔒 Security vulnerability scan completed"
+        echo "📊 Results uploaded to Security tab"
+        echo "✅ No build failures from security issues"

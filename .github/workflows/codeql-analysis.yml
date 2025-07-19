@@ -1,0 +1,126 @@
+name: CodeQL Security Analysis
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master, develop ]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly on Mondays at 6 AM
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    name: CodeQL Analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [] # Will be populated dynamically
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Detect languages
+      id: detect
+      run: |
+        languages=()
+        
+        if find . -name "*.py" -type f | head -1 | grep -q .; then
+          languages+=("python")
+        fi
+        
+        if find . -name "*.js" -o -name "*.jsx" -o -name "*.ts" -o -name "*.tsx" -type f | head -1 | grep -q .; then
+          languages+=("javascript")
+        fi
+        
+        if find . -name "*.java" -type f | head -1 | grep -q .; then
+          languages+=("java")
+        fi
+        
+        if find . -name "*.cs" -type f | head -1 | grep -q .; then
+          languages+=("csharp")
+        fi
+        
+        if find . -name "*.cpp" -o -name "*.c" -o -name "*.cc" -o -name "*.cxx" -type f | head -1 | grep -q .; then
+          languages+=("cpp")
+        fi
+        
+        if find . -name "*.go" -type f | head -1 | grep -q .; then
+          languages+=("go")
+        fi
+        
+        if [ ${#languages[@]} -eq 0 ]; then
+          languages+=("javascript")  # Default fallback
+        fi
+        
+        echo "languages=$(printf '%s
+' "${languages[@]}" | jq -R . | jq -s .)" >> $GITHUB_OUTPUT
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ fromJson(steps.detect.outputs.languages) }}
+        queries: +security-and-quality
+
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{ matrix.language }}"
+        upload: true
+
+  analyze-python:
+    if: hashFiles('**/*.py') != ''
+    name: Analyze Python Code
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: python
+        queries: +security-and-quality
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:python"
+
+  analyze-javascript:
+    if: hashFiles('**/*.js', '**/*.jsx', '**/*.ts', '**/*.tsx') != ''
+    name: Analyze JavaScript/TypeScript Code  
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: javascript
+        queries: +security-and-quality
+
+    - name: Perform CodeQL Analysis
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:javascript"
